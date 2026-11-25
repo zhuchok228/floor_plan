@@ -4851,12 +4851,35 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
     );
   }
 
+  
+  Widget _buildWindowIcon(int sashes) {
+    return Container(
+      width: 24,
+      height: 20,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0284C7).withValues(alpha: 0.18),
+        border: Border.all(color: const Color(0xFF0284C7), width: 1.3),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Row(
+        children: List.generate(sashes, (i) => Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              border: i < sashes - 1 ? const Border(right: BorderSide(color: Color(0xFF0284C7), width: 1.1)) : null,
+            ),
+          ),
+        )),
+      ),
+    );
+  }
+
   Widget _buildConstructionChoiceChip({
     required String label,
     required String subtitle,
     required bool isSelected,
     required Color color,
     required VoidCallback onTap,
+    Widget? iconWidget,
   }) {
     return InkWell(
       onTap: onTap,
@@ -4871,13 +4894,22 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
             width: isSelected ? 1.5 : 1.0,
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: isDarkTheme ? Colors.white : Colors.black87)),
-            const SizedBox(height: 2),
-            Text(subtitle, style: TextStyle(fontSize: 9.5, color: color, fontWeight: FontWeight.w600)),
+            if (iconWidget != null) ...[
+              iconWidget,
+              const SizedBox(width: 8),
+            ],
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: isDarkTheme ? Colors.white : Colors.black87)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: TextStyle(fontSize: 9.5, color: color, fontWeight: FontWeight.w600)),
+              ],
+            ),
           ],
         ),
       ),
@@ -8670,6 +8702,123 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
     );
   }
 
+
+  void _confirmClearAll(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDarkTheme ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 24),
+            SizedBox(width: 8),
+            Text('Очистить чертёж?'),
+          ],
+        ),
+        content: const Text(
+          'Все стены, комнаты, проёмы, мебель и размеры будут удалены с холста.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _recordSnapshotForUndo();
+              setState(() {
+                walls.clear();
+                zones.clear();
+                openings.clear();
+                objects.clear();
+                electricalItems.clear();
+                customDimensions.clear();
+                editingBoundaryZone = null;
+                selectedObject = null;
+                selectedWall = null;
+                selectedOpening = null;
+                selectedDimension = null;
+                selectedObjects.clear();
+                selectedWalls.clear();
+                selectedOpenings.clear();
+                selectedDimensions.clear();
+                _autoSaveCurrentProject();
+              });
+            },
+            child: const Text('Очистить всё', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFileMenuButton() {
+    return PopupMenuButton<String>(
+      tooltip: 'Файл и экспорт',
+      icon: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: isDarkTheme ? Colors.white10 : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isDarkTheme ? Colors.white24 : const Color(0xFFCBD5E1)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.folder_open_rounded, size: 16, color: isDarkTheme ? Colors.cyanAccent : const Color(0xFF0284C7)),
+            const SizedBox(width: 4),
+            Text('Файл', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDarkTheme ? Colors.white : Colors.black87)),
+            const Icon(Icons.arrow_drop_down, size: 16),
+          ],
+        ),
+      ),
+      color: isDarkTheme ? const Color(0xFF1E293B) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onSelected: (val) {
+        if (val == 'save') _exportProjectJsonFile();
+        if (val == 'open') _importProjectJsonFile();
+        if (val == 'pdf') _exportPlanAsVectorPdf();
+      },
+      itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: 'save',
+          child: Row(
+            children: [
+              Icon(Icons.save_outlined, color: Color(0xFF0284C7), size: 18),
+              SizedBox(width: 10),
+              Text('Сохранить проект (.json)', style: TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'open',
+          child: Row(
+            children: [
+              Icon(Icons.folder_open_outlined, color: Color(0xFFD97706), size: 18),
+              SizedBox(width: 10),
+              Text('Загрузить проект (.json)', style: TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'pdf',
+          child: Row(
+            children: [
+              Icon(Icons.picture_as_pdf_outlined, color: Color(0xFF2563EB), size: 18),
+              SizedBox(width: 10),
+              Text('Экспорт в векторный PDF', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2563EB))),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMobilePlanMetricsBtn(BuildContext context) {
     return InkWell(
       onTap: () => _showMobilePlanMetricsSheet(context),
@@ -9374,33 +9523,8 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                             ),
                           ),
                           _buildTopBarDivider(),
-                          IconButton(
-                            tooltip: 'Сохранить проект в файл (.json)',
-                            icon: Icon(
-                              Icons.save_outlined,
-                              color: isDarkTheme ? Colors.cyanAccent : const Color(0xFF0284C7),
-                              size: 19,
-                            ),
-                            onPressed: _exportProjectJsonFile,
-                          ),
-                          IconButton(
-                            tooltip: 'Загрузить проект из файла (.json)',
-                            icon: Icon(
-                              Icons.folder_open_outlined,
-                              color: isDarkTheme ? Colors.amberAccent : const Color(0xFFD97706),
-                              size: 19,
-                            ),
-                            onPressed: _importProjectJsonFile,
-                          ),
-                          IconButton(
-                            tooltip: 'Экспорт проекта в векторный PDF',
-                            icon: Icon(
-                              Icons.picture_as_pdf_outlined,
-                              color: isDarkTheme ? Colors.lightBlueAccent : const Color(0xFF2563EB),
-                              size: 19,
-                            ),
-                            onPressed: _exportPlanAsVectorPdf,
-                          ),
+                          _buildFileMenuButton(),
+                          _buildTopBarDivider(),
                           IconButton(
                             tooltip: 'Умная раскладка плитки и калькулятор',
                             icon: Icon(
@@ -9410,7 +9534,6 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                             ),
                             onPressed: () => _openTileLayoutStudio(),
                           ),
-                          _buildTopBarDivider(),
                           IconButton(
                             tooltip: 'Вписать весь чертёж в экран',
                             icon: Icon(
@@ -9419,32 +9542,6 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                               size: 19,
                             ),
                             onPressed: _fitPlanToScreen,
-                          ),
-                          IconButton(
-                            tooltip: showGrid ? 'Сетка включена (клик — скрыть)' : 'Сетка скрыта (клик — показать)',
-                            icon: Icon(
-                              Icons.grid_on_rounded,
-                              color: showGrid
-                                  ? (isDarkTheme ? Colors.cyanAccent : const Color(0xFF0284C7))
-                                  : (isDarkTheme ? Colors.white38 : const Color(0xFF94A3B8)),
-                              size: 19,
-                            ),
-                            onPressed: () => setState(() {
-                              showGrid = !showGrid;
-                              snapConfig.snapToGrid = showGrid;
-                            }),
-                          ),
-                          IconButton(
-                            tooltip: isDarkTheme ? 'Переключить на светлую тему' : 'Переключить на темную тему (Figma)',
-                            icon: Icon(
-                              isDarkTheme ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-                              color: isDarkTheme ? Colors.amberAccent : const Color(0xFF4F46E5),
-                              size: 19,
-                            ),
-                            onPressed: () => setState(() {
-                              isDarkTheme = !isDarkTheme;
-                              isDarkThemeNotifier.value = isDarkTheme;
-                            }),
                           ),
                           _buildTopBarDivider(),
                           IconButton(
@@ -9485,22 +9582,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                               color: isDarkTheme ? Colors.redAccent : const Color(0xFFDC2626),
                               size: 19,
                             ),
-                            onPressed: () {
-                              _recordSnapshotForUndo();
-                              setState(() {
-                                walls.clear();
-                                zones.clear();
-                                openings.clear();
-                                objects.clear();
-                                electricalItems.clear();
-                                customDimensions.clear();
-                                editingBoundaryZone = null;
-                                selectedObject = null;
-                                selectedWall = null;
-                                selectedOpening = null;
-                                _autoSaveCurrentProject();
-                              });
-                            },
+                            onPressed: () => _confirmClearAll(context),
                           ),
                         ],
                       ),
@@ -9509,12 +9591,73 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 ),
               ),
 
+              // ВЕРТИКАЛЬНЫЙ ПОЛЗУНОК ТОЛЩИНЫ СТЕНЫ ПРИ РИСОВАНИИ СТЕН
+              if (selectedTool == EditorTool.drawWall && !is3DMode)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SafeArea(
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: (isDarkTheme ? const Color(0xFF1E293B) : Colors.white).withValues(alpha: 0.95),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: isDarkTheme ? Colors.white24 : const Color(0xFFCBD5E1)),
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0D99FF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${currentThicknessCm.round()} см',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 180,
+                            width: 36,
+                            child: RotatedBox(
+                              quarterTurns: 3,
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 4,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 9),
+                                ),
+                                child: Slider(
+                                  value: currentThicknessCm,
+                                  min: 5,
+                                  max: 50,
+                                  divisions: 45,
+                                  activeColor: const Color(0xFF0D99FF),
+                                  onChanged: (v) => setState(() => currentThicknessCm = v),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Icon(Icons.line_weight, size: 18, color: Color(0xFF0D99FF)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
               // В) 3D VIEW-CUBE В ЛЕВОМ НИЖНЕМ УГЛУ
               Align(
                 alignment: Alignment.bottomLeft,
                 child: SafeArea(
                   child: Padding(
-                    padding: EdgeInsets.only(left: isMobile ? 12 : 18, bottom: isMobile ? 68 : 18),
+                    padding: EdgeInsets.only(
+                      left: isMobile ? 12 : 18,
+                      bottom: isMobile ? ((selectedObject != null || selectedWall != null || selectedOpening != null || editingBoundaryZone != null || selectedDimension != null) ? 270 : 68) : 18,
+                    ),
                     child: _CadViewCubeButton(
                       is3DMode: is3DMode,
                       onTap: _toggle3DMode,
@@ -9882,7 +10025,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    _buildToolBtn(EditorTool.overview, Icons.pan_tool_alt_outlined, 'Обзор'),
+                                    _buildToolBtn(EditorTool.overview, Icons.touch_app_outlined, 'Выделение'),
                                     _buildWallHoverToolBtn(EditorTool.drawWall, Icons.edit_road, 'Стена (${currentThicknessCm.round()} см)'),
                                     
                                     // РАЗДЕЛ СТРОИТЕЛЬСТВО (Окна, Двери, Коробка, Шаблоны)
@@ -10341,7 +10484,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
               SwitchListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                title: Text('Привязка к сетке (шаг  см)', style: const TextStyle(fontSize: 12)),
+                title: Text('Привязка к сетке (шаг ${snapConfig.gridStepCm.round()} см)', style: const TextStyle(fontSize: 12)),
                 value: snapConfig.snapToGrid,
                 onChanged: (v) => setState(() => snapConfig.snapToGrid = v),
               ),
@@ -10655,6 +10798,71 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
         ),
         const SizedBox(height: 8),
         Divider(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0), height: 1),
+        const SizedBox(height: 12),
+
+        // 0. ТЕМА ОФОРМЛЕНИЯ И СЕТКА
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: cardBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.palette_outlined, size: 16, color: Color(0xFF0D99FF)),
+                  const SizedBox(width: 6),
+                  Text('Тема оформления холста:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: labelColor)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  buildSegmentedBtn<bool>(
+                    value: false,
+                    groupValue: isDark,
+                    label: '☀️ Светлая',
+                    onSelected: (v) {
+                      setState(() {
+                        isDarkTheme = false;
+                        isDarkThemeNotifier.value = false;
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  buildSegmentedBtn<bool>(
+                    value: true,
+                    groupValue: isDark,
+                    label: '🌙 Тёмная (Figma)',
+                    onSelected: (v) {
+                      setState(() {
+                        isDarkTheme = true;
+                        isDarkThemeNotifier.value = true;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Показывать координатную сетку', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                value: showGrid,
+                onChanged: (v) {
+                  setState(() {
+                    showGrid = v;
+                    snapConfig.snapToGrid = v;
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+
         const SizedBox(height: 12),
 
         // 1. ЕДИНИЦЫ ИЗМЕРЕНИЯ (Метры / Миллиметры с мгновенным пересчетом)
@@ -11991,6 +12199,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 },
               ),
               _buildConstructionChoiceChip(
+                iconWidget: _buildWindowIcon(1),
                 label: '1-створчатое',
                 subtitle: '0.8×1.4м',
                 isSelected: false,
@@ -12004,6 +12213,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 },
               ),
               _buildConstructionChoiceChip(
+                iconWidget: _buildWindowIcon(2),
                 label: '2-створчатое',
                 subtitle: '1.4×1.4м',
                 isSelected: false,
@@ -12017,6 +12227,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 },
               ),
               _buildConstructionChoiceChip(
+                iconWidget: _buildWindowIcon(3),
                 label: '3-створчатое',
                 subtitle: '2.0×1.4м',
                 isSelected: false,
@@ -12030,6 +12241,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 },
               ),
               _buildConstructionChoiceChip(
+                iconWidget: _buildWindowIcon(4),
                 label: 'Панорамное',
                 subtitle: '2.4×2.2м',
                 isSelected: false,
@@ -13167,82 +13379,153 @@ class _TileLayoutStudioDialogState extends State<TileLayoutStudioDialog> {
           children: [
             // TOP HEADER
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: EdgeInsets.symmetric(
+                horizontal: MediaQuery.of(context).size.width < 750 ? 12 : 20,
+                vertical: MediaQuery.of(context).size.width < 750 ? 8 : 12,
+              ),
               decoration: BoxDecoration(
                 border: Border(bottom: BorderSide(color: borderCol)),
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0D9488).withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.grid_view_rounded, color: Color(0xFF0D9488), size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
+              child: MediaQuery.of(context).size.width < 750
+                  ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Мастер умной раскладки плитки и калькулятор',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: textCol),
+                        Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0D9488).withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.grid_view_rounded, color: Color(0xFF0D9488), size: 18),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Раскладка плитки',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textCol),
+                              ),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.close_rounded, color: subTextCol),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          surfaceMode == TileSurfaceMode.floor
-                              ? 'Раскладка пола: расчет подрезок, швов и сметы материалов'
-                              : 'Развёртка стен по периметру помещения с вычетом дверей и окон',
-                          style: TextStyle(fontSize: 12, color: subTextCol),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: borderCol),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<RoomZone>(
+                              value: currentZone,
+                              isExpanded: true,
+                              dropdownColor: cardBg,
+                              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF0D9488)),
+                              items: widget.allZones.map((z) {
+                                return DropdownMenuItem<RoomZone>(
+                                  value: z,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.meeting_room_outlined, size: 16, color: z.color),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${z.name} (${z.areaSqM.toStringAsFixed(1)} м²)',
+                                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: textCol),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (nz) {
+                                if (nz != null) _switchZone(nz);
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0D9488).withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.grid_view_rounded, color: Color(0xFF0D9488), size: 24),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Мастер умной раскладки плитки и калькулятор',
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: textCol),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                surfaceMode == TileSurfaceMode.floor
+                                    ? 'Раскладка пола: расчет подрезок, швов и сметы материалов'
+                                    : 'Развёртка стен по периметру помещения с вычетом дверей и окон',
+                                style: TextStyle(fontSize: 12, color: subTextCol),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Room dropdown
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: borderCol),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<RoomZone>(
+                              value: currentZone,
+                              dropdownColor: cardBg,
+                              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF0D9488)),
+                              items: widget.allZones.map((z) {
+                                return DropdownMenuItem<RoomZone>(
+                                  value: z,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.meeting_room_outlined, size: 16, color: z.color),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${z.name} (${z.areaSqM.toStringAsFixed(1)} м²)',
+                                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textCol),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (nz) {
+                                if (nz != null) _switchZone(nz);
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          icon: Icon(Icons.close_rounded, color: subTextCol),
+                          tooltip: 'Закрыть',
+                          onPressed: () => Navigator.pop(context),
                         ),
                       ],
                     ),
-                  ),
-                  // Room dropdown
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: cardBg,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: borderCol),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<RoomZone>(
-                        value: currentZone,
-                        dropdownColor: cardBg,
-                        icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF0D9488)),
-                        items: widget.allZones.map((z) {
-                          return DropdownMenuItem<RoomZone>(
-                            value: z,
-                            child: Row(
-                              children: [
-                                Icon(Icons.meeting_room_outlined, size: 16, color: z.color),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${z.name} (${z.areaSqM.toStringAsFixed(1)} м²)',
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textCol),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (nz) {
-                          if (nz != null) _switchZone(nz);
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    icon: Icon(Icons.close_rounded, color: subTextCol),
-                    tooltip: 'Закрыть',
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
             ),
 
             // MAIN CONTENT BODY
@@ -17275,16 +17558,26 @@ class GridAndWallsPainter extends CustomPainter {
           ? halfT + 12.0 / canvasScale
           : -halfT - tp.height - 12.0 / canvasScale;
 
-      final labelBg = Rect.fromCenter(
-        center: Offset(0, labelY + tp.height / 2),
+      final normAngle = (op.rotation % (2 * math.pi) + 2 * math.pi) % (2 * math.pi);
+      final bool isUpsideDown = normAngle > math.pi / 2 && normAngle < 3 * math.pi / 2;
+
+      canvas.save();
+      final labelCenter = Offset(0, labelY + tp.height / 2);
+      canvas.translate(labelCenter.dx, labelCenter.dy);
+      if (isUpsideDown) {
+        canvas.rotate(math.pi);
+      }
+      final localBg = Rect.fromCenter(
+        center: Offset.zero,
         width: tp.width + 6 / canvasScale,
         height: tp.height + 4 / canvasScale,
       );
       canvas.drawRRect(
-        RRect.fromRectAndRadius(labelBg, Radius.circular(3 / canvasScale)),
+        RRect.fromRectAndRadius(localBg, Radius.circular(3 / canvasScale)),
         Paint()..color = (isDarkTheme ? const Color(0xFF0F172A) : Colors.white).withValues(alpha: 0.90),
       );
-      tp.paint(canvas, Offset(-tp.width / 2, labelY));
+      tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
+      canvas.restore();
 
     } else if (op.type == OpeningType.door) {
       final rect = Rect.fromCenter(center: Offset.zero, width: op.widthMeters * 100, height: wallThick);
