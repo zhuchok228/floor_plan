@@ -1,0 +1,45 @@
+name: floor_plan
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/textures/
+    - assets/textures/concrete/
+    - assets/textures/wood/
+    - assets/textures/brick_stone/
+    - assets/textures/carpets/
+    - assets/textures/leather/
+    - assets/textures/paint/
+    - assets/textures/landscape/
+    - assets/textures/metal/
+    - assets/textures/marble/
+    - assets/textures/wallpaper/
+    - assets/textures/laminate/
+    - assets/textures/parquet/
+    - assets/textures/linoleum/
+    - assets/textures/tile/
+    - assets/models/
+    - assets/models/living_room/
+    - assets/models/bedroom/
+    - assets/models/tables_chairs/
+    - assets/models/storage/
+    - assets/models/kitchen/
+    - assets/models/plumbing/
+    - assets/models/decor/
+    - assets/models/electrical/
