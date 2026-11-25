@@ -149,6 +149,7 @@ class FloorPlanApp extends StatelessWidget {
 enum EditorTool {
   overview,
   drawWall,
+  wallDimensions,
   drawRoomBox,
   drawDimension,
   addDoor,
@@ -1207,6 +1208,7 @@ class Wall {
   List<WallLayer> layersSideA;
   List<WallLayer> layersSideB;
   TileLayoutConfig? tileConfig;
+  double? customClearLengthM;
 
   Wall(
     this.start,
@@ -1216,6 +1218,7 @@ class Wall {
     this.textureSideB,
     List<WallLayer>? layersSideA,
     List<WallLayer>? layersSideB,
+    this.customClearLengthM,
   })  : layersSideA = layersSideA ?? [],
         layersSideB = layersSideB ?? [];
 
@@ -1260,6 +1263,7 @@ class Wall {
         'layersA': layersSideA.map((l) => l.toJson()).toList(),
         'layersB': layersSideB.map((l) => l.toJson()).toList(),
         'tileConfig': tileConfig?.toJson(),
+        'customClearM': customClearLengthM,
       };
 
   factory Wall.fromJson(Map<String, dynamic> m) {
@@ -1270,6 +1274,7 @@ class Wall {
       thicknessCm: (m['th'] as num?)?.toDouble() ?? 15.0,
       textureSideA: (m['texA'] as String?) ?? legacyTex,
       textureSideB: (m['texB'] as String?) ?? legacyTex,
+      customClearLengthM: (m['customClearM'] as num?)?.toDouble(),
     );
     if (m['layersA'] is List) {
       w.layersSideA = (m['layersA'] as List).map((e) => WallLayer.fromJson(e)).toList();
@@ -1673,9 +1678,182 @@ Offset _projectPointOnSegment(Offset p, Offset v, Offset w) {
   return (startDeduction, endDeduction);
 }
 
+class WallFaceDimension {
+  final Wall wall;
+  final Offset innerStart;
+  final Offset innerEnd;
+  final Offset witnessStartExt;
+  final Offset witnessEndExt;
+  final Offset badgePos;
+  final Offset roomNormal;
+  final double lengthM;
+  final int lengthMm;
+  final String formattedText;
+
+  WallFaceDimension({
+    required this.wall,
+    required this.innerStart,
+    required this.innerEnd,
+    required this.witnessStartExt,
+    required this.witnessEndExt,
+    required this.badgePos,
+    required this.roomNormal,
+    required this.lengthM,
+    required this.lengthMm,
+    required this.formattedText,
+  });
+}
+
+WallFaceDimension computeWallFaceDimension(Wall wall, List<Wall> allWalls, [List<RoomZone>? allZones]) {
+  final double axialLenPx = (wall.end - wall.start).distance;
+  if (axialLenPx < 1.0) {
+    return WallFaceDimension(
+      wall: wall,
+      innerStart: wall.start,
+      innerEnd: wall.end,
+      witnessStartExt: wall.start,
+      witnessEndExt: wall.end,
+      badgePos: wall.start,
+      roomNormal: const Offset(0, 1),
+      lengthM: 0.0,
+      lengthMm: 0,
+      formattedText: '0 мм',
+    );
+  }
+
+  final dir = (wall.end - wall.start) / axialLenPx;
+  final norm = Offset(-dir.dy, dir.dx);
+  final halfT = wall.totalEffectiveThicknessCm / 2.0;
+
+  Offset roomNorm = norm;
+  final mid = Offset((wall.start.dx + wall.end.dx) / 2, (wall.start.dy + wall.end.dy) / 2);
+  final probeA = mid + norm * (halfT + 8.0);
+  final probeB = mid - norm * (halfT + 8.0);
+
+  bool sideAInZone = false;
+  bool sideBInZone = false;
+  if (allZones != null && allZones.isNotEmpty) {
+    for (final z in allZones) {
+      if (z.polygon.length >= 3) {
+        if (z.containsPoint(probeA)) sideAInZone = true;
+        if (z.containsPoint(probeB)) sideBInZone = true;
+      }
+    }
+  }
+
+  if (sideBInZone && !sideAInZone) {
+    roomNorm = -norm;
+  } else if (!sideAInZone && !sideBInZone) {
+    double sideAScore = 0;
+    double sideBScore = 0;
+    for (final other in allWalls) {
+      if (identical(other, wall)) continue;
+      if ((other.start - wall.start).distance < 15.0 || (other.end - wall.start).distance < 15.0 ||
+          (other.start - wall.end).distance < 15.0 || (other.end - wall.end).distance < 15.0) {
+        final otherMid = Offset((other.start.dx + other.end.dx) / 2, (other.start.dy + other.end.dy) / 2);
+        final toOther = otherMid - mid;
+        if (toOther.dx * norm.dx + toOther.dy * norm.dy > 0) {
+          sideAScore += 1;
+        } else {
+          sideBScore += 1;
+        }
+      }
+    }
+    if (sideBScore > sideAScore) {
+      roomNorm = -norm;
+    }
+  }
+
+  final faceBaseStart = wall.start + roomNorm * halfT;
+  final faceBaseEnd = wall.end + roomNorm * halfT;
+
+  Offset cStart = faceBaseStart;
+  Offset cEnd = faceBaseEnd;
+
+  Wall? adjStart;
+  Wall? adjEnd;
+  for (final other in allWalls) {
+    if (identical(other, wall)) continue;
+    if ((other.start - wall.start).distance < 15.0 || (other.end - wall.start).distance < 15.0) {
+      adjStart = other;
+    }
+    if ((other.start - wall.end).distance < 15.0 || (other.end - wall.end).distance < 15.0) {
+      adjEnd = other;
+    }
+  }
+
+  if (adjStart != null) {
+    final otherDir = (adjStart.end - adjStart.start);
+    final otherLen = otherDir.distance;
+    if (otherLen > 1.0) {
+      final otherNorm = Offset(-otherDir.dy / otherLen, otherDir.dx / otherLen);
+      final otherHalfT = adjStart.totalEffectiveThicknessCm / 2.0;
+      for (final sign in [-1.0, 1.0]) {
+        final otherFacePt = adjStart.start + otherNorm * (otherHalfT * sign);
+        final inter = _intersectInfiniteLines(faceBaseStart, dir, otherFacePt, otherDir / otherLen);
+        if (inter != null && (inter - wall.start).distance < math.max(60.0, wall.totalEffectiveThicknessCm * 2.5)) {
+          cStart = inter;
+          break;
+        }
+      }
+    }
+  }
+
+  if (adjEnd != null) {
+    final otherDir = (adjEnd.end - adjEnd.start);
+    final otherLen = otherDir.distance;
+    if (otherLen > 1.0) {
+      final otherNorm = Offset(-otherDir.dy / otherLen, otherDir.dx / otherLen);
+      final otherHalfT = adjEnd.totalEffectiveThicknessCm / 2.0;
+      for (final sign in [-1.0, 1.0]) {
+        final otherFacePt = adjEnd.start + otherNorm * (otherHalfT * sign);
+        final inter = _intersectInfiniteLines(faceBaseEnd, dir, otherFacePt, otherDir / otherLen);
+        if (inter != null && (inter - wall.end).distance < math.max(60.0, wall.totalEffectiveThicknessCm * 2.5)) {
+          cEnd = inter;
+          break;
+        }
+      }
+    }
+  }
+
+  double lenPx = (cEnd - cStart).dx * dir.dx + (cEnd - cStart).dy * dir.dy;
+  if (lenPx < 5.0) lenPx = axialLenPx;
+
+  double finalLenM = lenPx / 100.0;
+  if (wall.customClearLengthM != null && wall.customClearLengthM! > 0) {
+    finalLenM = wall.customClearLengthM!;
+  }
+  final int lenMm = (finalLenM * 1000.0).round();
+
+  final double extDist = 24.0;
+  final witStart = cStart + roomNorm * extDist;
+  final witEnd = cEnd + roomNorm * extDist;
+  final badgePos = Offset((witStart.dx + witEnd.dx) / 2, (witStart.dy + witEnd.dy) / 2);
+
+  return WallFaceDimension(
+    wall: wall,
+    innerStart: cStart,
+    innerEnd: cEnd,
+    witnessStartExt: witStart,
+    witnessEndExt: witEnd,
+    badgePos: badgePos,
+    roomNormal: roomNorm,
+    lengthM: finalLenM,
+    lengthMm: lenMm,
+    formattedText: '$lenMm мм',
+  );
+}
+
 double calcWallInternalLength(Wall wall, List<Wall> allWalls, [List<RoomZone>? allZones]) {
+  if (wall.customClearLengthM != null && wall.customClearLengthM! > 0) {
+    return wall.customClearLengthM!;
+  }
   final double axialLenPx = (wall.end - wall.start).distance;
   if (axialLenPx < 1.0) return 0.0;
+  final faceDim = computeWallFaceDimension(wall, allWalls, allZones);
+  if (faceDim.lengthM > 0.05) {
+    return faceDim.lengthM;
+  }
   final (startDeduction, endDeduction) = calcWallDeductions(wall, allWalls, allZones);
   return math.max(0.0, (axialLenPx - startDeduction - endDeduction) / 100.0);
 }
@@ -1853,6 +2031,12 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
   bool showFilterFlyout = false;
   bool showWallThicknessSlider = false;
   bool _hasMovedDraggedItem = false;
+
+  // Режим произвольной планировки
+  bool isCustomSketchMode = false;
+  int customSketchStep = 1; // 1 = набросок эскиза, 2 = задание жестких размеров
+  int _sketchStartWallCount = 0;
+  final Map<int, double> sketchWallTargetLengthsMm = {};
   bool showSettingsFlyout = false;
   bool showFurnitureLayer = true;
   bool showElectricalLayer = true;
@@ -5806,6 +5990,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
       }
     }
 
+
     final double internalLenPx = (axialLenPx - startDeduction - endDeduction).clamp(0.0, double.infinity);
     return internalLenPx / 100.0;
   }
@@ -6810,6 +6995,311 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
             ),
           );
         },
+      ),
+    );
+  }
+
+
+  // =========================================================================
+  // РЕЖИМ ПРОИЗВОЛЬНОЙ ПЛАНИРОВКИ И БЫСТРОЕ РЕДАКТИРОВАНИЕ РАЗМЕРОВ В СВЕТУ
+  // =========================================================================
+  void _startCustomSketchMode() {
+    setState(() {
+      isCustomSketchMode = true;
+      customSketchStep = 1;
+      selectedTool = EditorTool.drawWall;
+      _sketchStartWallCount = walls.length;
+      sketchWallTargetLengthsMm.clear();
+      activeDockFlyout = ActiveDockFlyout.none;
+    });
+  }
+
+  void _proceedToCustomSketchStep2() {
+    setState(() {
+      customSketchStep = 2;
+      selectedTool = EditorTool.wallDimensions;
+      for (int i = _sketchStartWallCount; i < walls.length; i++) {
+        final dim = computeWallFaceDimension(walls[i], walls, zones);
+        sketchWallTargetLengthsMm[i] = dim.lengthMm.toDouble();
+      }
+    });
+  }
+
+  void _cancelCustomSketchMode() {
+    setState(() {
+      if (customSketchStep == 1 && walls.length > _sketchStartWallCount) {
+        walls.removeRange(_sketchStartWallCount, walls.length);
+      }
+      isCustomSketchMode = false;
+      customSketchStep = 1;
+      selectedTool = EditorTool.overview;
+      sketchWallTargetLengthsMm.clear();
+      _rebuildAutoZonesFromWalls();
+    });
+  }
+
+  void _finalizeCustomSketchLayout() {
+    _recordSnapshotForUndo();
+    final sketchWalls = walls.sublist(_sketchStartWallCount);
+    if (sketchWalls.length >= 3) {
+      Offset currentPt = sketchWalls.first.start;
+      for (int i = 0; i < sketchWalls.length; i++) {
+        final w = sketchWalls[i];
+        final wallIdx = _sketchStartWallCount + i;
+        final double targetMm = sketchWallTargetLengthsMm[wallIdx] ?? (w.lengthInMeters * 1000.0);
+        final double targetPx = targetMm / 10.0;
+
+        final dir = (w.end - w.start);
+        final len = dir.distance;
+        final u = len > 0.01 ? dir / len : const Offset(1, 0);
+
+        Offset orthoU = u;
+        if (u.dx.abs() > u.dy.abs()) {
+          orthoU = Offset(u.dx > 0 ? 1.0 : -1.0, 0.0);
+        } else {
+          orthoU = Offset(0.0, u.dy > 0 ? 1.0 : -1.0);
+        }
+
+        w.start = currentPt;
+        w.end = currentPt + orthoU * targetPx;
+        w.customClearLengthM = targetMm / 1000.0;
+        currentPt = w.end;
+      }
+      sketchWalls.last.end = sketchWalls.first.start;
+    }
+
+    setState(() {
+      isCustomSketchMode = false;
+      customSketchStep = 1;
+      selectedTool = EditorTool.overview;
+      sketchWallTargetLengthsMm.clear();
+      _rebuildAutoZonesFromWalls();
+      _autoSaveCurrentProject();
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🎉 Планировка успешно построена по заданным жестким размерам!'),
+          duration: Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _showQuickClearDimensionDialog(int wallIndex, WallFaceDimension dim) {
+    final wall = walls[wallIndex];
+    final curMm = dim.lengthMm;
+    final ctrl = TextEditingController(text: curMm > 0 ? curMm.toString() : '');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFF334155), width: 1.2),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D99FF).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.straighten_rounded, color: Color(0xFF38BDF8), size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Чистовой размер стены', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                  Text('В свету от угла до угла: $curMm мм', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Введите точный размер (мм):', style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: const Color(0xFF1E293B),
+                suffixText: 'мм',
+                suffixStyle: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 16),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF475569))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF0D99FF), width: 2)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена', style: TextStyle(color: Colors.white60)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              final val = double.tryParse(ctrl.text.trim().replaceAll(',', '.'));
+              if (val != null && val >= 50.0) {
+                Navigator.pop(context);
+                _recordSnapshotForUndo();
+                final double newM = val / 1000.0;
+                final double oldM = dim.lengthM;
+                final double deltaM = newM - oldM;
+                wall.customClearLengthM = newM;
+
+                if (sketchWallTargetLengthsMm.containsKey(wallIndex)) {
+                  sketchWallTargetLengthsMm[wallIndex] = val;
+                }
+
+                final axialLenPx = (wall.end - wall.start).distance;
+                if (axialLenPx > 1.0) {
+                  final dir = (wall.end - wall.start) / axialLenPx;
+                  final shift = dir * (deltaM * 100.0);
+                  final oldEnd = wall.end;
+                  final newEnd = oldEnd + shift;
+                  wall.end = newEnd;
+                  for (final other in walls) {
+                    if (identical(other, wall)) continue;
+                    if ((other.start - oldEnd).distance < 10.0) {
+                      other.start = newEnd;
+                    } else if ((other.end - oldEnd).distance < 10.0) {
+                      other.end = newEnd;
+                    }
+                  }
+                }
+
+                setState(() {
+                  _rebuildAutoZonesFromWalls();
+                  _autoSaveCurrentProject();
+                });
+              }
+            },
+            icon: const Icon(Icons.check, size: 18),
+            label: const Text('Применить ✓', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomSketchOverlayBanner() {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.only(top: 54, left: 16, right: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFF8B5CF6), width: 1.5),
+            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 16, offset: Offset(0, 6))],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.architecture_rounded, color: Color(0xFFA78BFA), size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          customSketchStep == 1
+                              ? 'Произвольная планировка: Шаг 1 из 2'
+                              : 'Шаг 2: Задайте точные размеры стен',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        Text(
+                          customSketchStep == 1
+                              ? 'Нарисуйте эскиз контура помещения от руки'
+                              : 'Нажимайте на размеры стен на плане для ввода значений',
+                          style: const TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _cancelCustomSketchMode,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white70,
+                      side: const BorderSide(color: Colors.white24),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _cancelCustomSketchMode,
+                    child: const Text('Отмена', style: TextStyle(fontSize: 11)),
+                  ),
+                  const Spacer(),
+                  if (customSketchStep == 1)
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        elevation: 0,
+                      ),
+                      onPressed: (walls.length - _sketchStartWallCount >= 3)
+                          ? _proceedToCustomSketchStep2
+                          : null,
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('Задать размеры ✓', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    )
+                  else
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0D99FF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        elevation: 0,
+                      ),
+                      onPressed: _finalizeCustomSketchLayout,
+                      icon: const Icon(Icons.rocket_launch_rounded, size: 16),
+                      label: const Text('Построить чертёж 🚀', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -8982,6 +9472,16 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                         );
                         currentEnd = currentStart;
                       });
+                    } else if (selectedTool == EditorTool.wallDimensions) {
+                      for (int i = 0; i < walls.length; i++) {
+                        final w = walls[i];
+                        final dim = computeWallFaceDimension(w, walls, zones);
+                        if ((worldPos - dim.badgePos).distance < 36.0 / canvasScale ||
+                            (worldPos - (dim.innerStart + dim.innerEnd) / 2).distance < 36.0 / canvasScale) {
+                          _showQuickClearDimensionDialog(i, dim);
+                          return;
+                        }
+                      }
                     } else if (selectedTool == EditorTool.overview) {
                       if (showElectricalLayer) {
                         for (final item in electricalItems.reversed) {
@@ -9411,6 +9911,10 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                   ),
                 ),
               ),
+
+              // ПЛАВАЮЩИЙ БАННЕР РЕЖИМА "ПРОИЗВОЛЬНАЯ ПЛАНИРОВКА"
+              if (isCustomSketchMode)
+                _buildCustomSketchOverlayBanner(),
 
               // ПАРЯЩИЕ ОКНА НАСТРОЕК И ФИЛЬТРОВ СЛОЁВ
               if (showFilterFlyout && !is3DMode)
@@ -10054,6 +10558,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                                   children: [
                                     _buildToolBtn(EditorTool.overview, Icons.touch_app_outlined, 'Выделение'),
                                     _buildWallHoverToolBtn(EditorTool.drawWall, Icons.edit_road, 'Стена (${currentThicknessCm.round()} см)'),
+                                    _buildToolBtn(EditorTool.wallDimensions, Icons.straighten_rounded, 'Размеры'),
                                     
                                     // РАЗДЕЛ СТРОИТЕЛЬСТВО (Окна, Двери, Коробка, Шаблоны)
                                     InkWell(
@@ -12465,7 +12970,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                   },
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                     decoration: BoxDecoration(
                       color: const Color(0xFF0D99FF).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
@@ -12474,15 +12979,41 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.crop_square_rounded, size: 18, color: Color(0xFF0D99FF)),
-                        SizedBox(width: 6),
-                        Text('Коробка', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF0D99FF))),
+                        Icon(Icons.crop_square_rounded, size: 16, color: Color(0xFF0D99FF)),
+                        SizedBox(width: 4),
+                        Text('Коробка', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF0D99FF))),
                       ],
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    _startCustomSketchMode();
+                    setState(() => activeDockFlyout = ActiveDockFlyout.none);
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.4)),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.architecture_rounded, size: 16, color: Color(0xFF8B5CF6)),
+                        SizedBox(width: 4),
+                        Text('Планировка', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF8B5CF6))),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               Expanded(
                 child: InkWell(
                   onTap: () {
@@ -12490,7 +13021,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                   },
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                     decoration: BoxDecoration(
                       color: const Color(0xFF059669).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
@@ -12499,9 +13030,9 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.dashboard_outlined, size: 18, color: Color(0xFF059669)),
-                        SizedBox(width: 6),
-                        Text('Шаблоны', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF059669))),
+                        Icon(Icons.dashboard_outlined, size: 16, color: Color(0xFF059669)),
+                        SizedBox(width: 4),
+                        Text('Шаблоны', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF059669))),
                       ],
                     ),
                   ),
@@ -16964,8 +17495,6 @@ class GridAndWallsPainter extends CustomPainter {
 
     // Расчёт вычетов с максимальной точностью по RoomZone или сопряжённым граням
     final (startDeduction, endDeduction) = calcWallDeductions(wall, walls, zones);
-    final double internalLenPx = (axialLenPx - startDeduction - endDeduction).clamp(0.0, double.infinity);
-    final double internalLenM = internalLenPx / 100.0;
 
     // Внутренние опорные точки грани стены (чистый размер в свету для раскладки плитки)
     final innerStart = wall.start + dir * startDeduction;
@@ -17019,40 +17548,93 @@ class GridAndWallsPainter extends CustomPainter {
 
     if (!showDimensionsLayer) return;
 
-    final String wallLenText = (unitFormat == UnitFormat.millimeters)
-        ? '${(internalLenM * 1000.0).round()} мм'
-        : '${internalLenM.toStringAsFixed(2)} м';
+    final faceDim = computeWallFaceDimension(wall, walls, zones);
+    final isDimMode = (selectedTool == EditorTool.wallDimensions);
 
-    // Текст размера: чистый внутренний размер в свету
-    final tp = TextPainter(
-      text: TextSpan(
-        text: wallLenText,
-        style: TextStyle(
-          color: const Color(0xFF0F172A),
-          fontSize: 11 / canvasScale.clamp(0.5, 2.0),
-          fontWeight: FontWeight.bold,
+    if (isDimMode) {
+      final witPaint = Paint()
+        ..color = const Color(0xFF0D99FF).withValues(alpha: 0.8)
+        ..strokeWidth = 1.2 / canvasScale
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(faceDim.innerStart, faceDim.witnessStartExt, witPaint);
+      canvas.drawLine(faceDim.innerEnd, faceDim.witnessEndExt, witPaint);
+
+      final dimLinePaint = Paint()
+        ..color = const Color(0xFF0D99FF)
+        ..strokeWidth = 1.5 / canvasScale
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(faceDim.witnessStartExt, faceDim.witnessEndExt, dimLinePaint);
+
+      final tickVec = (dir + faceDim.roomNormal);
+      final tickLen = tickVec.distance;
+      final tickDir = (tickLen > 0.001 ? tickVec / tickLen : const Offset(1, 1)) * (4.5 / canvasScale);
+      canvas.drawLine(faceDim.witnessStartExt - tickDir, faceDim.witnessStartExt + tickDir, dimLinePaint);
+      canvas.drawLine(faceDim.witnessEndExt - tickDir, faceDim.witnessEndExt + tickDir, dimLinePaint);
+
+      final tp = TextPainter(
+        text: TextSpan(
+          text: (unitFormat == UnitFormat.millimeters) ? '${faceDim.lengthMm} мм' : '${faceDim.lengthM.toStringAsFixed(2)} м',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 12 / canvasScale.clamp(0.5, 2.0),
+            fontWeight: FontWeight.bold,
+          ),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+        textDirection: TextDirection.ltr,
+      )..layout();
 
-    final bg = Rect.fromCenter(
-      center: mid,
-      width: tp.width + 8 / canvasScale,
-      height: tp.height + 4 / canvasScale,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(bg, Radius.circular(5 / canvasScale)),
-      Paint()..color = Colors.white.withValues(alpha: 0.95),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(bg, Radius.circular(5 / canvasScale)),
-      Paint()
-        ..color = const Color(0xFF0D99FF).withValues(alpha: 0.4)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0 / canvasScale,
-    );
-    tp.paint(canvas, Offset(mid.dx - tp.width / 2, mid.dy - tp.height / 2));
+      final bg = Rect.fromCenter(
+        center: faceDim.badgePos,
+        width: tp.width + 12 / canvasScale,
+        height: tp.height + 6 / canvasScale,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(bg, Radius.circular(6 / canvasScale)),
+        Paint()..color = const Color(0xFF0D99FF),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(bg, Radius.circular(6 / canvasScale)),
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2 / canvasScale,
+      );
+      tp.paint(canvas, Offset(faceDim.badgePos.dx - tp.width / 2, faceDim.badgePos.dy - tp.height / 2));
+    } else {
+      final String wallLenText = (unitFormat == UnitFormat.millimeters)
+          ? '${faceDim.lengthMm} мм'
+          : '${faceDim.lengthM.toStringAsFixed(2)} м';
+
+      final tp = TextPainter(
+        text: TextSpan(
+          text: wallLenText,
+          style: TextStyle(
+            color: const Color(0xFF0F172A),
+            fontSize: 11 / canvasScale.clamp(0.5, 2.0),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      final bg = Rect.fromCenter(
+        center: mid,
+        width: tp.width + 8 / canvasScale,
+        height: tp.height + 4 / canvasScale,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(bg, Radius.circular(5 / canvasScale)),
+        Paint()..color = Colors.white.withValues(alpha: 0.95),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(bg, Radius.circular(5 / canvasScale)),
+        Paint()
+          ..color = const Color(0xFF0D99FF).withValues(alpha: 0.4)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0 / canvasScale,
+      );
+      tp.paint(canvas, Offset(mid.dx - tp.width / 2, mid.dy - tp.height / 2));
+    }
   }
 
   void _drawElectricalItem(Canvas canvas, ElectricalItem item) {
