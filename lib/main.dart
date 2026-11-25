@@ -1851,6 +1851,8 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
 
   UnitFormat currentUnit = UnitFormat.millimeters;
   bool showFilterFlyout = false;
+  bool showWallThicknessSlider = false;
+  bool _hasMovedDraggedItem = false;
   bool showSettingsFlyout = false;
   bool showFurnitureLayer = true;
   bool showElectricalLayer = true;
@@ -7970,6 +7972,10 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
   }
 
   Widget _buildPropertyInspector({bool isMobile = false, double? maxWidth}) {
+    // Hide inspector while dragging or moving to prevent obstructing view
+    if (draggedOpening != null || draggedObject != null || draggedCornerOriginal != null || draggedElectricalItem != null || currentStart != null) {
+      return const SizedBox.shrink();
+    }
     if (selectedObject == null && selectedWall == null && selectedOpening == null && editingBoundaryZone == null && selectedDimension == null) {
       return const SizedBox.shrink();
     }
@@ -8760,21 +8766,14 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
       tooltip: 'Файл и экспорт',
       icon: Container(
         height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        width: 38,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isDarkTheme ? Colors.white10 : const Color(0xFFF1F5F9),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: isDarkTheme ? Colors.white24 : const Color(0xFFCBD5E1)),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.folder_open_rounded, size: 16, color: isDarkTheme ? Colors.cyanAccent : const Color(0xFF0284C7)),
-            const SizedBox(width: 4),
-            Text('Файл', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDarkTheme ? Colors.white : Colors.black87)),
-            const Icon(Icons.arrow_drop_down, size: 16),
-          ],
-        ),
+        child: Icon(Icons.folder_open_rounded, size: 18, color: isDarkTheme ? Colors.cyanAccent : const Color(0xFF0284C7)),
       ),
       color: isDarkTheme ? const Color(0xFF1E293B) : Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -8950,6 +8949,11 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                       return;
                     }
 
+                    _hasMovedDraggedItem = false;
+                    if (showWallThicknessSlider) {
+                      setState(() => showWallThicknessSlider = false);
+                    }
+
                     _baseScale = canvasScale;
                     _baseFocalPoint = details.localFocalPoint;
                     _baseCanvasOffset = canvasOffset;
@@ -9122,8 +9126,10 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                       setState(() => currentEnd = _snapPoint(worldPos, allowOrtho: false));
                     } else if (selectedTool == EditorTool.overview) {
                       if (draggedOpening != null) {
+                        _hasMovedDraggedItem = true;
                         setState(() => _snapOpeningToNearestWall(draggedOpening!, worldPos));
                       } else if (draggedObject != null) {
+                        _hasMovedDraggedItem = true;
                         final step = snapConfig.gridStepCm;
                         setState(() => draggedObject!.position = snapConfig.snapToGrid
                             ? Offset((worldPos.dx / step).round() * step, (worldPos.dy / step).round() * step)
@@ -9167,6 +9173,12 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                       if (draggedOpening != null || draggedObject != null || draggedCornerOriginal != null || draggedElectricalItem != null) {
                         _autoSaveCurrentProject();
                         draggedElectricalItem = null;
+                      }
+                      if (draggedOpening != null && _hasMovedDraggedItem) {
+                        selectedOpening = null;
+                      }
+                      if (draggedObject != null && _hasMovedDraggedItem) {
+                        selectedObject = null;
                       }
                       if (selectionMarquee != null && selectionMarquee!.width > 12 && selectionMarquee!.height > 12) {
                         for (final obj in objects) {
@@ -9406,7 +9418,8 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                   alignment: isMobile ? Alignment.topCenter : Alignment.topRight,
                   child: SafeArea(
                     child: Container(
-                      width: isMobile ? (constraints.maxWidth - 20) : 290,
+                      width: isMobile ? (constraints.maxWidth - 20) : 340,
+                      constraints: BoxConstraints(maxHeight: isMobile ? (constraints.maxHeight * 0.75) : 580),
                       margin: EdgeInsets.only(right: isMobile ? 10 : 60, left: isMobile ? 10 : 0, top: isMobile ? 48 : 56),
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
@@ -9415,7 +9428,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                         border: Border.all(color: isDarkTheme ? const Color(0xFF3E3E44) : const Color(0xFFCBD5E1), width: 1.2),
                         boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 18, offset: Offset(0, 4))],
                       ),
-                      child: _buildFilterFlyoutContent(),
+                      child: SingleChildScrollView(child: _buildFilterFlyoutContent()),
                     ),
                   ),
                 ),
@@ -9591,33 +9604,43 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 ),
               ),
 
-              // ВЕРТИКАЛЬНЫЙ ПОЛЗУНОК ТОЛЩИНЫ СТЕНЫ ПРИ РИСОВАНИИ СТЕН
-              if (selectedTool == EditorTool.drawWall && !is3DMode)
+              // ВЕРТИКАЛЬНЫЙ ПОЛЗУНОК ТОЛЩИНЫ СТЕНЫ ПРИ РИСОВАНИИ СТЕН (скрывается после выбора)
+              if (selectedTool == EditorTool.drawWall && showWallThicknessSlider && !is3DMode)
                 Align(
                   alignment: Alignment.centerRight,
                   child: SafeArea(
                     child: Container(
                       margin: const EdgeInsets.only(right: 12),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                       decoration: BoxDecoration(
-                        color: (isDarkTheme ? const Color(0xFF1E293B) : Colors.white).withValues(alpha: 0.95),
+                        color: (isDarkTheme ? const Color(0xFF1E293B) : Colors.white).withValues(alpha: 0.98),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: isDarkTheme ? Colors.white24 : const Color(0xFFCBD5E1)),
-                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
+                        border: Border.all(color: isDarkTheme ? Colors.white24 : const Color(0xFFCBD5E1), width: 1.5),
+                        boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 14, offset: Offset(0, 4))],
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0D99FF),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${currentThicknessCm.round()} см',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0D99FF),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '${currentThicknessCm.round()} см',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => setState(() => showWallThicknessSlider = false),
+                                child: const Icon(Icons.close, size: 16, color: Colors.white70),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 8),
                           SizedBox(
@@ -9637,12 +9660,16 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                                   divisions: 45,
                                   activeColor: const Color(0xFF0D99FF),
                                   onChanged: (v) => setState(() => currentThicknessCm = v),
+                                  onChangeEnd: (v) => setState(() => showWallThicknessSlider = false),
                                 ),
                               ),
                             ),
                           ),
                           const SizedBox(height: 8),
-                          const Icon(Icons.line_weight, size: 18, color: Color(0xFF0D99FF)),
+                          InkWell(
+                            onTap: () => setState(() => showWallThicknessSlider = false),
+                            child: const Icon(Icons.check_circle_outline, size: 20, color: Color(0xFF0D99FF)),
+                          ),
                         ],
                       ),
                     ),
@@ -10307,7 +10334,19 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
   Widget _buildToolBtn(EditorTool tool, IconData icon, String label) {
     final isSel = selectedTool == tool;
     return InkWell(
-      onTap: () => setState(() => selectedTool = tool),
+      onTap: () => setState(() {
+        if (tool == EditorTool.drawWall) {
+          if (selectedTool == EditorTool.drawWall) {
+            showWallThicknessSlider = !showWallThicknessSlider;
+          } else {
+            selectedTool = EditorTool.drawWall;
+            showWallThicknessSlider = true;
+          }
+        } else {
+          selectedTool = tool;
+          showWallThicknessSlider = false;
+        }
+      }),
       borderRadius: BorderRadius.circular(8),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
@@ -10464,7 +10503,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                     return Padding(
                       padding: const EdgeInsets.only(right: 4),
                       child: ChoiceChip(
-                        label: Text(' см', style: TextStyle(fontSize: 11, fontWeight: isSel ? FontWeight.bold : FontWeight.normal)),
+                        label: Text('${step.round()} см', style: TextStyle(fontSize: 11, fontWeight: isSel ? FontWeight.bold : FontWeight.normal)),
                         selected: isSel,
                         onSelected: (_) => setState(() => snapConfig.gridStepCm = step),
                         visualDensity: VisualDensity.compact,
@@ -10539,9 +10578,15 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
   }
 
   // =========================================================================
-  // ПАРЯЩЕЕ МЕНЮ: ФИЛЬТРЫ И СЛОИ ЧЕРТЕЖА
+  // ПАРЯЩЕЕ МЕНЮ: ФИЛЬТРЫ И СЛОИ ЧЕРТЕЖА (СОВРЕМЕННЫЙ ДИЗАЙН С КАРТОЧКАМИ)
   // =========================================================================
   Widget _buildFilterFlyoutContent() {
+    final isDark = isDarkTheme;
+    final cardBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
+    final cardBorder = isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1);
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subTextColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -10551,105 +10596,135 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
           children: [
             Row(
               children: [
-                const Icon(Icons.layers_outlined, color: Color(0xFF0D99FF), size: 18),
+                const Icon(Icons.layers_rounded, color: Color(0xFF0D99FF), size: 20),
                 const SizedBox(width: 8),
-                Text('Слои и видимость', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDarkTheme ? Colors.white : const Color(0xFF0F172A))),
+                Text('Слои и видимость', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: textColor)),
               ],
             ),
             IconButton(
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              icon: Icon(Icons.close, size: 18, color: isDarkTheme ? Colors.white70 : const Color(0xFF64748B)),
+              icon: Icon(Icons.close, size: 18, color: subTextColor),
               onPressed: () => setState(() => showFilterFlyout = false),
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        Divider(color: isDarkTheme ? Colors.white12 : Colors.black12, height: 1),
         const SizedBox(height: 8),
-        _buildLayerToggleItem(
-          icon: Icons.chair_outlined,
-          color: const Color(0xFF38BDF8),
-          label: 'Мебель и декор',
-          count: objects.length,
-          value: showFurnitureLayer,
-          onChanged: (v) => setState(() => showFurnitureLayer = v),
+        Divider(color: cardBorder, height: 1),
+        const SizedBox(height: 10),
+
+        // КАРТОЧКА 1: ОСНОВНЫЕ СЛОИ ПЛАНИРОВКИ
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: cardBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Планировка и элементы', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: subTextColor)),
+              const SizedBox(height: 6),
+              _buildModernLayerRow(
+                icon: Icons.chair_rounded,
+                color: const Color(0xFF38BDF8),
+                title: 'Мебель и сантехника',
+                count: objects.length,
+                value: showFurnitureLayer,
+                onChanged: (v) => setState(() => showFurnitureLayer = v),
+              ),
+              _buildModernLayerRow(
+                icon: Icons.crop_square_rounded,
+                color: const Color(0xFF818CF8),
+                title: 'Зоны и экспликация комнат',
+                count: zones.length,
+                value: showZonesLayer,
+                onChanged: (v) => setState(() => showZonesLayer = v),
+              ),
+              _buildModernLayerRow(
+                icon: Icons.straighten_rounded,
+                color: const Color(0xFF10B981),
+                title: 'Размеры стен и выноски',
+                count: walls.length,
+                value: showDimensionsLayer,
+                onChanged: (v) => setState(() => showDimensionsLayer = v),
+              ),
+            ],
+          ),
         ),
-        _buildLayerToggleItem(
-          icon: Icons.electrical_services_rounded,
-          color: const Color(0xFFF59E0B),
-          label: 'Электрика и розетки',
-          count: electricalItems.length,
-          value: showElectricalLayer,
-          onChanged: (v) => setState(() => showElectricalLayer = v),
-        ),
-        if (showElectricalLayer) ...[
-          Padding(
-            padding: const EdgeInsets.only(left: 28, bottom: 4),
-            child: Column(
-              children: [
-                CheckboxListTile(
-                  dense: true,
-                  visualDensity: VisualDensity.compact,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Подписи групп электрики', style: TextStyle(fontSize: 11)),
-                  value: showElectricalLabels,
-                  onChanged: (v) => setState(() => showElectricalLabels = v ?? true),
-                ),
-                CheckboxListTile(
-                  dense: true,
-                  visualDensity: VisualDensity.compact,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Размеры розеток/выключателей от стен', style: TextStyle(fontSize: 11)),
-                  value: showSocketDimensions,
-                  onChanged: (v) => setState(() => showSocketDimensions = v ?? true),
-                ),
-                CheckboxListTile(
-                  dense: true,
-                  visualDensity: VisualDensity.compact,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Размеры светильников до стен', style: TextStyle(fontSize: 11)),
-                  value: showLightDimensions,
-                  onChanged: (v) => setState(() => showLightDimensions = v ?? true),
+        const SizedBox(height: 8),
+
+        // КАРТОЧКА 2: ИНЖЕНЕРНЫЕ СЕТИ (ЭЛЕКТРИКА)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: cardBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Инженерные сети', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: subTextColor)),
+              const SizedBox(height: 6),
+              _buildModernLayerRow(
+                icon: Icons.electrical_services_rounded,
+                color: const Color(0xFFF59E0B),
+                title: 'Электрика и розетки',
+                count: electricalItems.length,
+                value: showElectricalLayer,
+                onChanged: (v) => setState(() => showElectricalLayer = v),
+              ),
+              if (showElectricalLayer) ...[
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, top: 4),
+                  child: Column(
+                    children: [
+                      _buildModernSubToggle('Подписи и группы электрики', showElectricalLabels, (v) => setState(() => showElectricalLabels = v)),
+                      _buildModernSubToggle('Размеры розеток от углов стен', showSocketDimensions, (v) => setState(() => showSocketDimensions = v)),
+                      _buildModernSubToggle('Размеры светильников до стен', showLightDimensions, (v) => setState(() => showLightDimensions = v)),
+                    ],
+                  ),
                 ),
               ],
-            ),
+            ],
           ),
-        ],
-        _buildLayerToggleItem(
-          icon: Icons.straighten_rounded,
-          color: const Color(0xFF10B981),
-          label: 'Размеры стен и выноски',
-          count: walls.length,
-          value: showDimensionsLayer,
-          onChanged: (v) => setState(() => showDimensionsLayer = v),
         ),
-        _buildLayerToggleItem(
-          icon: Icons.crop_free_rounded,
-          color: const Color(0xFF818CF8),
-          label: 'Зоны и площади комнат',
-          count: zones.length,
-          value: showZonesLayer,
-          onChanged: (v) => setState(() => showZonesLayer = v),
-        ),
-        _buildLayerToggleItem(
-          icon: Icons.grid_4x4_rounded,
-          color: const Color(0xFF94A3B8),
-          label: 'Координатная сетка CAD',
-          value: showGrid,
-          onChanged: (v) => setState(() {
-            showGrid = v;
-            snapConfig.snapToGrid = v;
-          }),
+        const SizedBox(height: 8),
+
+        // КАРТОЧКА 3: НАПРАВЛЯЮЩИЕ И СЕТКА
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: cardBorder),
+          ),
+          child: _buildModernLayerRow(
+            icon: Icons.grid_4x4_rounded,
+            color: const Color(0xFF94A3B8),
+            title: 'Координатная сетка CAD',
+            value: showGrid,
+            onChanged: (v) => setState(() {
+              showGrid = v;
+              snapConfig.snapToGrid = v;
+            }),
+          ),
         ),
         const SizedBox(height: 10),
+
+        // БЫСТРЫЕ ПРЕСЕТЫ
         Row(
           children: [
             Expanded(
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0D99FF),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 0,
                 ),
                 onPressed: () => setState(() {
                   showFurnitureLayer = true;
@@ -10659,21 +10734,27 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                   showGrid = true;
                   snapConfig.snapToGrid = true;
                 }),
-                child: const Text('Все слои', style: TextStyle(fontSize: 11)),
+                icon: const Icon(Icons.visibility, size: 15),
+                label: const Text('Все слои', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: OutlinedButton(
+              child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  foregroundColor: isDark ? Colors.white70 : const Color(0xFF334155),
+                  side: BorderSide(color: cardBorder),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 onPressed: () => setState(() {
                   showFurnitureLayer = false;
                   showElectricalLayer = false;
+                  showDimensionsLayer = true;
+                  showZonesLayer = true;
                 }),
-                child: const Text('Только стены', style: TextStyle(fontSize: 11)),
+                icon: const Icon(Icons.crop_square, size: 15),
+                label: const Text('Только стены', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -10682,42 +10763,92 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
     );
   }
 
-  Widget _buildLayerToggleItem({
+  Widget _buildModernLayerRow({
     required IconData icon,
     required Color color,
-    required String label,
+    required String title,
     int? count,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
+    final isDark = isDarkTheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: InkWell(
         onTap: () => onChanged(!value),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
           child: Row(
             children: [
-              Icon(icon, size: 16, color: value ? color : (isDarkTheme ? Colors.white38 : const Color(0xFF94A3B8))),
-              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: value ? color.withValues(alpha: 0.15) : (isDark ? Colors.white10 : Colors.black12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(icon, size: 16, color: value ? color : (isDark ? Colors.white38 : Colors.black38)),
+              ),
+              const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  count != null ? '$label ($count)' : label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: value ? FontWeight.bold : FontWeight.w500,
-                    color: value ? (isDarkTheme ? Colors.white : const Color(0xFF0F172A)) : (isDarkTheme ? Colors.white38 : const Color(0xFF94A3B8)),
-                  ),
+                child: Row(
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: value ? FontWeight.bold : FontWeight.w500,
+                        color: value ? (isDark ? Colors.white : const Color(0xFF0F172A)) : (isDark ? Colors.white38 : const Color(0xFF94A3B8)),
+                      ),
+                    ),
+                    if (count != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: value ? color.withValues(alpha: 0.2) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: value ? color : (isDark ? Colors.white38 : Colors.black38)),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               Switch(
                 value: value,
                 onChanged: onChanged,
+                activeColor: color,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernSubToggle(String label, bool value, ValueChanged<bool> onChanged) {
+    final isDark = isDarkTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: InkWell(
+        onTap: () => onChanged(!value),
+        borderRadius: BorderRadius.circular(6),
+        child: Row(
+          children: [
+            Icon(value ? Icons.check_circle_rounded : Icons.radio_button_unchecked, size: 14, color: value ? const Color(0xFFF59E0B) : (isDark ? Colors.white38 : Colors.black38)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 11, color: value ? (isDark ? Colors.white70 : Colors.black87) : (isDark ? Colors.white38 : Colors.black38)),
+              ),
+            ),
+          ],
         ),
       ),
     );

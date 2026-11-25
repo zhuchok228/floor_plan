@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
 
 class PlatformAdapterImpl {
+  static const MethodChannel _channel = MethodChannel('floor_plan/native');
   static final Map<String, String> _memStorage = {};
 
   static void saveLocalStorage(String key, String value) {
@@ -28,6 +30,9 @@ class PlatformAdapterImpl {
     try {
       final file = File('${Directory.systemTemp.path}/$filename');
       file.writeAsBytesSync(bytes);
+      if (Platform.isIOS) {
+        _channel.invokeMethod('shareFile', {'path': file.path});
+      }
     } catch (_) {}
   }
 
@@ -35,6 +40,9 @@ class PlatformAdapterImpl {
     try {
       final file = File('${Directory.systemTemp.path}/$filename');
       file.writeAsStringSync(htmlContent);
+      if (Platform.isIOS) {
+        _channel.invokeMethod('shareFile', {'path': file.path, 'html': htmlContent});
+      }
     } catch (_) {}
   }
 
