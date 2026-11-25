@@ -2182,7 +2182,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
           ],
         ),
         content: SizedBox(
-          width: 560,
+          width: math.min(560.0, MediaQuery.of(context).size.width - 32),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -4302,7 +4302,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
           children: [
             Container(
               height: 38,
-              width: 480,
+              width: math.min(480.0, MediaQuery.of(ctx).size.width - 48),
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
@@ -4370,7 +4370,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
             const SizedBox(height: 8),
             SizedBox(
               height: 220,
-              width: 480,
+              width: math.min(480.0, MediaQuery.of(ctx).size.width - 48),
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 145,
@@ -4571,7 +4571,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
           ],
         ),
         content: SizedBox(
-          width: 580,
+          width: math.min(580.0, MediaQuery.of(context).size.width - 32),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -5934,7 +5934,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
               ],
             ),
             content: SizedBox(
-              width: 380,
+              width: math.min(380.0, MediaQuery.of(context).size.width - 32),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -6124,7 +6124,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
               ],
             ),
             content: SizedBox(
-              width: 540,
+              width: math.min(540.0, MediaQuery.of(context).size.width - 32),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -7678,8 +7678,8 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
           ],
         ),
         content: SizedBox(
-          width: 680,
-          height: 560,
+          width: math.min(680.0, MediaQuery.of(ctx).size.width - 32),
+          height: math.min(560.0, MediaQuery.of(ctx).size.height * 0.8),
           child: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
@@ -7937,15 +7937,16 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
     );
   }
 
-  Widget _buildPropertyInspector() {
+  Widget _buildPropertyInspector({bool isMobile = false, double? maxWidth}) {
     if (selectedObject == null && selectedWall == null && selectedOpening == null && editingBoundaryZone == null && selectedDimension == null) {
       return const SizedBox.shrink();
     }
+    final actualWidth = maxWidth ?? (isMobile ? (MediaQuery.of(context).size.width - 24) : 280.0);
 
     if (selectedDimension != null) {
       return Container(
-        width: 280,
-        margin: const EdgeInsets.only(top: 10, right: 14),
+        width: actualWidth,
+        margin: EdgeInsets.only(top: isMobile ? 0 : 10, right: isMobile ? 0 : 14),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: const Color(0xFF0F172A).withValues(alpha: 0.95),
@@ -8011,8 +8012,9 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
     }
 
     return Container(
-      width: 280,
-      margin: const EdgeInsets.only(top: 10, right: 14),
+      width: actualWidth,
+      constraints: BoxConstraints(maxHeight: isMobile ? 260 : 480),
+      margin: EdgeInsets.only(top: isMobile ? 0 : 10, right: isMobile ? 0 : 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: const Color(0xFF0F172A).withValues(alpha: 0.95),
@@ -8583,6 +8585,120 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
     );
   }
 
+  void _showMobilePlanMetricsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDarkTheme ? const Color(0xFF242428) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.analytics_outlined, color: Color(0xFF0D99FF), size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Параметры плана',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: isDarkTheme ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildExplicationItem(
+                  icon: Icons.crop_free_rounded,
+                  label: 'Площадь пола (${zones.length} зон):',
+                  value: '${totalZonesAreaSqM.toStringAsFixed(2)} м²',
+                  color: const Color(0xFF34D399),
+                ),
+                const SizedBox(height: 10),
+                _buildExplicationItem(
+                  icon: Icons.straighten_rounded,
+                  label: 'Периметр стен:',
+                  value: '${totalPerimeter.toStringAsFixed(2)} м',
+                  color: const Color(0xFF38BDF8),
+                ),
+                const SizedBox(height: 10),
+                _buildExplicationItem(
+                  icon: Icons.view_quilt_outlined,
+                  label: 'Площадь стен (H=${wallHeightMeters.toStringAsFixed(1)}м):',
+                  value: '${totalWallsAreaSqM.toStringAsFixed(1)} м²',
+                  color: const Color(0xFFF59E0B),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      setState(() => showEstimateFlyout = true);
+                    },
+                    icon: const Icon(Icons.calculate_outlined, size: 18),
+                    label: const Text('Смета и расчёт', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMobilePlanMetricsBtn(BuildContext context) {
+    return InkWell(
+      onTap: () => _showMobilePlanMetricsSheet(context),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D99FF).withValues(alpha: isDarkTheme ? 0.25 : 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF0D99FF), width: 1.1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.analytics_outlined, color: Color(0xFF0D99FF), size: 15),
+            const SizedBox(width: 4),
+            Text(
+              '${totalZonesAreaSqM.toStringAsFixed(1)} м²',
+              style: const TextStyle(color: Color(0xFF0D99FF), fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+            const Icon(Icons.arrow_drop_down, color: Color(0xFF0D99FF), size: 15),
+          ],
+        ),
+      ),
+    );
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -8593,6 +8709,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
       body: LayoutBuilder(
         builder: (context, constraints) {
           _viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+          final isMobile = constraints.maxWidth < 700;
 
           return Stack(
             children: [
@@ -9043,12 +9160,12 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
               // ПАРЯЩАЯ ПАНЕЛЬ СМЕТЫ И СПЕЦИФИКАЦИИ (рядом с окном параметров плана)
               if (showEstimateFlyout && !is3DMode)
                 Align(
-                  alignment: Alignment.topLeft,
+                  alignment: isMobile ? Alignment.topCenter : Alignment.topLeft,
                   child: SafeArea(
                     child: Container(
-                      width: 380,
-                      constraints: const BoxConstraints(maxHeight: 460),
-                      margin: const EdgeInsets.only(left: 236, top: 10),
+                      width: isMobile ? (constraints.maxWidth - 20) : 380,
+                      constraints: BoxConstraints(maxHeight: isMobile ? (constraints.maxHeight * 0.72) : 460),
+                      margin: EdgeInsets.only(left: isMobile ? 10 : 236, right: isMobile ? 10 : 0, top: isMobile ? 48 : 10),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: isDarkTheme ? const Color(0xFF222226).withValues(alpha: 0.98) : Colors.white.withValues(alpha: 0.98),
@@ -9061,12 +9178,13 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                   ),
                 ),
 
-              Align(
-                alignment: Alignment.topLeft,
-                child: SafeArea(
-                  child: Container(
-                    width: 215,
-                    margin: const EdgeInsets.only(left: 14, top: 10),
+              if (!isMobile)
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: SafeArea(
+                    child: Container(
+                      width: 215,
+                      margin: const EdgeInsets.only(left: 14, top: 10),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: isDarkTheme ? const Color(0xFF242428).withValues(alpha: 0.96) : Colors.white.withValues(alpha: 0.96),
@@ -9136,11 +9254,11 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
               // ПАРЯЩИЕ ОКНА НАСТРОЕК И ФИЛЬТРОВ СЛОЁВ
               if (showFilterFlyout && !is3DMode)
                 Align(
-                  alignment: Alignment.topRight,
+                  alignment: isMobile ? Alignment.topCenter : Alignment.topRight,
                   child: SafeArea(
                     child: Container(
-                      width: 290,
-                      margin: const EdgeInsets.only(right: 60, top: 56),
+                      width: isMobile ? (constraints.maxWidth - 20) : 290,
+                      margin: EdgeInsets.only(right: isMobile ? 10 : 60, left: isMobile ? 10 : 0, top: isMobile ? 48 : 56),
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: isDarkTheme ? const Color(0xFF222226).withValues(alpha: 0.98) : Colors.white.withValues(alpha: 0.98),
@@ -9155,12 +9273,12 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
 
               if (showSettingsFlyout && !is3DMode)
                 Align(
-                  alignment: Alignment.topRight,
+                  alignment: isMobile ? Alignment.topCenter : Alignment.topRight,
                   child: SafeArea(
                     child: Container(
-                      width: 380,
-                      constraints: const BoxConstraints(maxHeight: 560),
-                      margin: const EdgeInsets.only(right: 20, top: 56),
+                      width: isMobile ? (constraints.maxWidth - 20) : 380,
+                      constraints: BoxConstraints(maxHeight: isMobile ? (constraints.maxHeight * 0.72) : 560),
+                      margin: EdgeInsets.only(right: isMobile ? 10 : 20, left: isMobile ? 10 : 0, top: isMobile ? 48 : 56),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: isDarkTheme ? const Color(0xFF222226).withValues(alpha: 0.98) : Colors.white.withValues(alpha: 0.98),
@@ -9178,8 +9296,8 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 alignment: Alignment.topCenter,
                 child: SafeArea(
                   child: Container(
-                    margin: const EdgeInsets.only(left: 240, right: 14, top: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    margin: EdgeInsets.only(left: isMobile ? 8 : 240, right: isMobile ? 8 : 14, top: isMobile ? 4 : 10),
+                    padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 10, vertical: 3),
                     decoration: BoxDecoration(
                       color: isDarkTheme ? const Color(0xFF2C2C2E).withValues(alpha: 0.96) : Colors.white.withValues(alpha: 0.96),
                       borderRadius: BorderRadius.circular(12),
@@ -9188,9 +9306,14 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                     ),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (isMobile) ...[
+                            _buildMobilePlanMetricsBtn(context),
+                            _buildTopBarDivider(),
+                          ],
                           // Отменить (Undo)
                           Container(
                             height: 32,
@@ -9391,7 +9514,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 alignment: Alignment.bottomLeft,
                 child: SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 18, bottom: 18),
+                    padding: EdgeInsets.only(left: isMobile ? 12 : 18, bottom: isMobile ? 68 : 18),
                     child: _CadViewCubeButton(
                       is3DMode: is3DMode,
                       onTap: _toggle3DMode,
@@ -9438,11 +9561,15 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 ),
 
               Align(
-                alignment: Alignment.topRight,
+                alignment: isMobile ? Alignment.bottomCenter : Alignment.topRight,
                 child: SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 80, right: 14),
-                    child: _buildPropertyInspector(),
+                    padding: EdgeInsets.only(
+                      top: isMobile ? 0 : 80,
+                      right: isMobile ? 0 : 14,
+                      bottom: isMobile ? 66 : 0,
+                    ),
+                    child: _buildPropertyInspector(isMobile: isMobile, maxWidth: constraints.maxWidth - 20),
                   ),
                 ),
               ),
@@ -9522,13 +9649,14 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                 return const SizedBox.shrink();
               }(),
 
-              Align(
-                alignment: Alignment.bottomRight,
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 14, bottom: 80),
-                    child: FloatingActionButton.extended(
-                      heroTag: 'shortcuts_btn',
+              if (!isMobile)
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 14, bottom: 80),
+                      child: FloatingActionButton.extended(
+                        heroTag: 'shortcuts_btn',
                       backgroundColor: const Color(0xFF1E293B),
                       foregroundColor: Colors.white,
                       onPressed: _showKeyboardShortcutsModal,
@@ -9692,7 +9820,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             // ВСПЛЫВАЮЩИЕ МЕНЮ НАД КНОПКАМИ НИЖНЕЙ ПАНЕЛИ (Строительство, Шаблоны, Текстуры, Мебель)
-                            _buildDockFlyoutContainer(),
+                            _buildDockFlyoutContainer(constraints, isMobile),
 
                             if (_hoveringWallToolBtn || _hoveringThicknessPopup)
                               MouseRegion(
@@ -9735,8 +9863,8 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
                                 ),
                               ),
                             Container(
-                              margin: const EdgeInsets.only(left: 12, right: 12, bottom: 14),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              margin: EdgeInsets.only(left: isMobile ? 6 : 12, right: isMobile ? 6 : 12, bottom: isMobile ? 6 : 14),
+                              padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 10, vertical: isMobile ? 6 : 8),
                               decoration: BoxDecoration(
                                 color: isDarkTheme ? const Color(0xFF2C2C2E).withValues(alpha: 0.96) : Colors.white,
                                 borderRadius: BorderRadius.circular(14),
@@ -10075,7 +10203,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
   // КОМПАКТНЫЕ ПРИВЯЗАННЫЕ ВСПЛЫВАЮЩИЕ ПАНЕЛИ (РЯДОМ С КНОПКАМИ, БЕЗ ПЕРЕКРЫТИЯ)
   // =========================================================================
 
-  Widget _buildDockFlyoutContainer() {
+  Widget _buildDockFlyoutContainer([BoxConstraints? constraints, bool isMobile = false]) {
     if (activeDockFlyout == ActiveDockFlyout.none || is3DMode) {
       return const SizedBox.shrink();
     }
@@ -10119,14 +10247,19 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
         return const SizedBox.shrink();
     }
 
+    final screenW = constraints?.maxWidth ?? MediaQuery.of(context).size.width;
+    final screenH = constraints?.maxHeight ?? MediaQuery.of(context).size.height;
+    final flyoutWidth = isMobile ? math.min(screenW - 16, 480.0) : width;
+    final flyoutMaxHeight = isMobile ? math.min(screenH * 0.48, 360.0) : 425.0;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      constraints: const BoxConstraints(maxWidth: 900),
-      alignment: alignment,
+      margin: const EdgeInsets.only(bottom: 6),
+      constraints: BoxConstraints(maxWidth: flyoutWidth),
+      alignment: isMobile ? Alignment.bottomCenter : alignment,
       child: Container(
-        width: width,
-        constraints: const BoxConstraints(maxHeight: 425),
-        padding: const EdgeInsets.all(12),
+        width: flyoutWidth,
+        constraints: BoxConstraints(maxHeight: flyoutMaxHeight),
+        padding: EdgeInsets.all(isMobile ? 8 : 12),
         decoration: BoxDecoration(
           color: isDarkTheme
               ? const Color(0xFF222226).withValues(alpha: 0.98)
@@ -11034,7 +11167,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
             side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
           ),
           child: Container(
-            width: 330,
+            width: math.min(330.0, MediaQuery.of(context).size.width - 32),
             padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -11210,7 +11343,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
             side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
           ),
           child: Container(
-            width: 330,
+            width: math.min(330.0, MediaQuery.of(context).size.width - 32),
             padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -11351,7 +11484,7 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> with SingleTickerProv
             ),
             insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             child: Container(
-              width: 380,
+              width: math.min(380.0, MediaQuery.of(context).size.width - 32),
               padding: const EdgeInsets.all(20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -13025,10 +13158,10 @@ class _TileLayoutStudioDialogState extends State<TileLayoutStudioDialog> {
     return Dialog(
       backgroundColor: bgCol,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      insetPadding: EdgeInsets.symmetric(horizontal: MediaQuery.of(context).size.width < 750 ? 8 : 24, vertical: MediaQuery.of(context).size.width < 750 ? 8 : 20),
       child: Container(
-        width: MediaQuery.of(context).size.width * 0.94,
-        height: MediaQuery.of(context).size.height * 0.92,
+        width: MediaQuery.of(context).size.width * (MediaQuery.of(context).size.width < 750 ? 0.98 : 0.94),
+        height: MediaQuery.of(context).size.height * (MediaQuery.of(context).size.width < 750 ? 0.98 : 0.92),
         constraints: const BoxConstraints(maxWidth: 1400, maxHeight: 900),
         child: Column(
           children: [
@@ -13114,11 +13247,14 @@ class _TileLayoutStudioDialogState extends State<TileLayoutStudioDialog> {
 
             // MAIN CONTENT BODY
             Expanded(
-              child: Row(
-                children: [
-                  // LEFT SIDE: PARAMETERS & ESTIMATE (440 px)
-                  SizedBox(
-                    width: 440,
+              child: LayoutBuilder(
+                builder: (context, tileConstraints) {
+                  final needScroll = tileConstraints.maxWidth < 950;
+                  final content = Row(
+                    children: [
+                      // LEFT SIDE: PARAMETERS & ESTIMATE (440 px)
+                      SizedBox(
+                        width: tileConstraints.maxWidth < 750 ? 380 : 440,
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border(right: BorderSide(color: borderCol)),
@@ -13864,12 +14000,24 @@ class _TileLayoutStudioDialogState extends State<TileLayoutStudioDialog> {
                     ),
                   ),
                 ],
-              ),
-            ),
-          ],
+              );
+              return needScroll
+                  ? SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: SizedBox(
+                        width: 960,
+                        child: content,
+                      ),
+                    )
+                  : content;
+            },
+          ),
         ),
-      ),
-    );
+      ],
+    ),
+  ),
+);
   }
 
   void _handleCanvasTap(Offset tapPos, Size size) {
